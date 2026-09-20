@@ -93,17 +93,22 @@ class Level3Scene extends LevelBase {
     c.add(label);
 
     c.setSize(w, h);
-    c.setInteractive(new Phaser.Geom.Rectangle(-w / 2, -h / 2, w, h), Phaser.Geom.Rectangle.Contains);
+    c.setInteractive(new Phaser.Geom.Rectangle(-w / 2, -h / 2, w, h), Phaser.Geom.Rectangle.Contains, { useHandCursor: true });
     c.on('pointerover', () => { draw(0, UI._lighten(COLORS.primary, 0.85), COLORS.primary); AudioManager.hover(); });
     c.on('pointerout', () => draw(0, base, COLORS.primary));
-    c.on('pointerdown', () => { draw(5, base, COLORS.primary); AudioManager.click(); });
-    c.on('pointerup', () => { draw(0, base, COLORS.primary); onClick(); });
+    UI.press(this, c, {
+      onDown: () => { draw(5, base, COLORS.primary); AudioManager.click(); },
+      onUp: () => { draw(0, base, COLORS.primary); },
+      onFire: () => onClick(),
+    });
     c._setColors = draw;
     c._w = w; c._h = h;
     return c;
   }
 
   _answer(opt, q) {
+    if (this._answering) return; // guard against a double-tap
+    this._answering = true;
     // lock all options
     this.optionButtons.forEach((b) => b.disableInteractive());
     const hud = this.hud();
@@ -116,6 +121,7 @@ class Level3Scene extends LevelBase {
     }
 
     this.showFeedback(opt.ok, q.tip, () => {
+      this._answering = false;
       if (hud.getLives() <= 0) { this.failLevel(); return; }
       this.index++;
       hud.updateProgress(this.index);

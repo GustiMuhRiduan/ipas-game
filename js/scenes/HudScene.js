@@ -73,13 +73,9 @@ class HudScene extends Phaser.Scene {
     // ---- Utility buttons (top-right cluster) ----
     let bx = GAME_WIDTH - 52;
     const by = 49;
-    this.fsBtn = UI.iconButton(this, bx, by, { icon: '⛶', d: 52, color: COLORS.white,
-      onClick: () => this._toggleFullscreen() });
+    this.fsBtn = UI.fullscreenButton(this, bx, by, 52);
     bx -= 62;
-    this.audioBtn = UI.iconButton(this, bx, by, {
-      icon: AudioManager.isMuted() ? '🔇' : '🔊', d: 52, color: COLORS.white,
-      onClick: () => { const m = AudioManager.toggleMute(); this.audioBtn.setIcon(m ? '🔇' : '🔊'); if (!m) AudioManager.startMusic(); },
-    });
+    this.audioBtn = UI.audioButton(this, bx, by, 52);
     bx -= 62;
     this.pauseBtn = UI.iconButton(this, bx, by, { icon: '⏸️', d: 52, color: COLORS.accent,
       onClick: () => this._pause() });
@@ -131,11 +127,6 @@ class HudScene extends Phaser.Scene {
       if (!alive) h.setAlpha(0.4);
       this.heartsContainer.add(h);
     }
-  }
-
-  _toggleFullscreen() {
-    if (this.scale.isFullscreen) this.scale.stopFullscreen();
-    else this.scale.startFullscreen();
   }
 
   // ---------------- Pause menu ----------------

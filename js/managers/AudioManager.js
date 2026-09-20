@@ -34,6 +34,28 @@ const AudioManager = {
     } catch (e) {
       this.ctx = null;
     }
+
+    this._installUnlock();
+  },
+
+  // Browsers (especially iOS/Safari) keep a new AudioContext "suspended" until a
+  // real user gesture, and do NOT auto-resume it — you must call resume() from
+  // inside the gesture. We listen globally so the very first tap/click/key press
+  // anywhere unlocks audio, then remove the listeners once it's running.
+  _installUnlock() {
+    if (this._unlockInstalled) return;
+    this._unlockInstalled = true;
+    const events = ['pointerdown', 'touchstart', 'mousedown', 'keydown'];
+    const handler = () => {
+      this.resume();
+      // Kick the ambient pad going once we're unlocked (unless muted).
+      if (this.ctx && this.ctx.state === 'running') {
+        if (!this.muted) this.startMusic();
+        events.forEach((ev) => window.removeEventListener(ev, handler, true));
+        this._unlockInstalled = false;
+      }
+    };
+    events.forEach((ev) => window.addEventListener(ev, handler, true));
   },
 
   // Browsers block audio until a user gesture; call this on first tap.

@@ -53,12 +53,8 @@ class LevelSelectScene extends Phaser.Scene {
     UI.button(this, 140, 60, { label: 'Menu', icon: '🏠', w: 180, h: 54, fontSize: 22, color: COLORS.inkSoft,
       onClick: () => this._go(SCENES.MENU) });
 
-    const audioBtn = UI.iconButton(this, GAME_WIDTH - 60, 56, {
-      icon: AudioManager.isMuted() ? '🔇' : '🔊', d: 56, color: COLORS.white,
-      onClick: () => { const m = AudioManager.toggleMute(); audioBtn.setIcon(m ? '🔇' : '🔊'); if (!m) AudioManager.startMusic(); },
-    });
-    UI.iconButton(this, GAME_WIDTH - 128, 56, { icon: '⛶', d: 56, color: COLORS.white,
-      onClick: () => { if (this.scale.isFullscreen) this.scale.stopFullscreen(); else this.scale.startFullscreen(); } });
+    UI.audioButton(this, GAME_WIDTH - 60, 56, 56);
+    UI.fullscreenButton(this, GAME_WIDTH - 128, 56, 56);
 
     this.cameras.main.fadeIn(220);
   }
@@ -102,10 +98,13 @@ class LevelSelectScene extends Phaser.Scene {
     }
 
     if (unlocked) {
-      const hit = this.add.circle(x, y, r + 8).setInteractive({ useHandCursor: true });
+      const hit = this.add.circle(x, y, r + 14).setInteractive({ useHandCursor: true });
       hit.on('pointerover', () => { this.tweens.add({ targets: c, scale: 1.06, duration: 120 }); AudioManager.hover(); });
       hit.on('pointerout', () => this.tweens.add({ targets: c, scale: 1, duration: 120 }));
-      hit.on('pointerup', () => { AudioManager.click(); this._go(lv.key); });
+      let goneg = false;
+      UI.press(this, hit, {
+        onFire: () => { if (goneg) return; goneg = true; AudioManager.click(); this._go(lv.key); },
+      });
       // gentle idle pulse to invite the tap
       this.tweens.add({ targets: c, scale: 1.03, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.inout' });
     } else {

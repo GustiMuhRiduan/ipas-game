@@ -78,25 +78,8 @@ class MenuScene extends Phaser.Scene {
   }
 
   _utilityButtons() {
-    const audioBtn = UI.iconButton(this, GAME_WIDTH - 60, 56, {
-      icon: AudioManager.isMuted() ? '🔇' : '🔊', d: 58, color: COLORS.white,
-      onClick: () => {
-        const muted = AudioManager.toggleMute();
-        audioBtn.setIcon(muted ? '🔇' : '🔊');
-        if (!muted) AudioManager.startMusic();
-      },
-    });
-
-    const fsBtn = UI.iconButton(this, GAME_WIDTH - 130, 56, {
-      icon: '⛶', d: 58, color: COLORS.white,
-      onClick: () => this._toggleFullscreen(),
-    });
-    void fsBtn;
-  }
-
-  _toggleFullscreen() {
-    if (this.scale.isFullscreen) this.scale.stopFullscreen();
-    else this.scale.startFullscreen();
+    UI.audioButton(this, GAME_WIDTH - 60, 56, 58);
+    UI.fullscreenButton(this, GAME_WIDTH - 130, 56, 58);
   }
 
   _floaters(emojis) {

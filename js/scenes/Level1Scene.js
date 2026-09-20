@@ -68,16 +68,13 @@ class Level1Scene extends LevelBase {
       fontFamily: FONT, fontSize: '16px', color: CSS.ink, align: 'center', wordWrap: { width: w - 30 },
     }).setOrigin(0.5, 0));
 
-    // action buttons
-    const offBtn = this._mini(-64, h / 2 - 34, '⏻ Matikan', COLORS.bad);
-    const keepBtn = this._mini(64, h / 2 - 34, '✓ Biarkan', COLORS.good);
-    c.add(offBtn);
-    c.add(keepBtn);
-
     const stamp = this.add.text(w / 2 - 26, -h / 2 + 24, '', { fontSize: '34px' }).setOrigin(0.5);
-    c.add(stamp);
 
+    let done = false;
+    let offBtn, keepBtn;
     const decide = (choice) => {
+      if (done) return; // guard against a double-fire
+      done = true;
       // disable further input on this card
       offBtn.disableInteractive();
       keepBtn.disableInteractive();
@@ -107,14 +104,18 @@ class Level1Scene extends LevelBase {
       });
     };
 
-    offBtn.on('pointerup', () => decide('off'));
-    keepBtn.on('pointerup', () => decide('keep'));
+    // action buttons (created after `decide` so they can call it)
+    offBtn = this._mini(-64, h / 2 - 34, '⏻ Matikan', COLORS.bad, () => decide('off'));
+    keepBtn = this._mini(64, h / 2 - 34, '✓ Biarkan', COLORS.good, () => decide('keep'));
+    c.add(offBtn);
+    c.add(keepBtn);
+    c.add(stamp);
 
     return c;
   }
 
-  // small pill button used inside a card
-  _mini(x, y, label, color) {
+  // small pill button used inside a card; fires onFire reliably on tap
+  _mini(x, y, label, color, onFire) {
     const w = 116, h = 46;
     const c = this.add.container(x, y);
     const g = this.add.graphics();
@@ -130,10 +131,14 @@ class Level1Scene extends LevelBase {
     }).setOrigin(0.5);
     c.add(t);
     c.setSize(w, h);
-    c.setInteractive(new Phaser.Geom.Rectangle(-w / 2, -h / 2, w, h), Phaser.Geom.Rectangle.Contains);
+    c.setInteractive(new Phaser.Geom.Rectangle(-w / 2 - 6, -h / 2 - 6, w + 12, h + 12), Phaser.Geom.Rectangle.Contains, { useHandCursor: true });
     c.on('pointerover', () => { this.tweens.add({ targets: c, scale: 1.06, duration: 100 }); AudioManager.hover(); });
     c.on('pointerout', () => { this.tweens.add({ targets: c, scale: 1, duration: 100 }); redraw(0, color); t.y = 0; });
-    c.on('pointerdown', () => { redraw(4, UI._darken(color, 0.25)); t.y = 3; AudioManager.click(); });
+    UI.press(this, c, {
+      onDown: () => { redraw(4, UI._darken(color, 0.25)); t.y = 3; AudioManager.click(); },
+      onUp: () => { redraw(0, color); t.y = 0; },
+      onFire: () => onFire(),
+    });
     return c;
   }
 }

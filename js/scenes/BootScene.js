@@ -11,13 +11,8 @@ class BootScene extends Phaser.Scene {
   }
 
   create() {
-    AudioManager.init();
+    AudioManager.init(); // installs a global gesture listener that unlocks audio
     Progress.load();
-
-    // Resume the audio context on the very first pointer/touch anywhere.
-    this.input.once('pointerdown', () => AudioManager.resume());
-    // Also resume on any key, for keyboard-only users.
-    this.input.keyboard.once('keydown', () => AudioManager.resume());
 
     // Remove the HTML loading splash now that Phaser is running.
     const pre = document.getElementById('preloader');

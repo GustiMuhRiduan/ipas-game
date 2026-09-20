@@ -8,6 +8,55 @@
  * ===========================================================================*/
 
 const UI = {
+  /**
+   * Attach a FORGIVING press interaction to an already-interactive game object.
+   *
+   * Touch devices (tablets/IFPs — our targets) rarely release exactly where the
+   * finger landed, so binding an action to `pointerup` alone means small drifts
+   * fire nothing and the button feels dead. Here we arm on `pointerdown` and
+   * fire on release whether it lands on the object (`pointerup`) or just off it
+   * (`pointerupoutside`, within a margin). This makes every button feel snappy.
+   *
+   * opts: { onDown, onUp, onFire, margin }
+   */
+  press(scene, obj, opts) {
+    const o = Object.assign({ onDown() {}, onUp() {}, onFire() {}, margin: 48 }, opts);
+    let armed = false;
+
+    const disarm = () => { armed = false; o.onUp(); };
+
+    obj.on('pointerdown', () => {
+      armed = true;
+      o.onDown();
+      if (AudioManager && AudioManager.resume) AudioManager.resume(); // unlock audio on any tap
+    });
+    // Released directly over the object — the simple, common case.
+    obj.on('pointerup', () => { if (!armed) return; disarm(); o.onFire(); });
+
+    // The forgiving case: the scene emits pointerup for EVERY release, wherever
+    // it lands. If this button was armed and the release is near it (finger
+    // drift on touch), fire it too. Whichever handler runs first disarms, so we
+    // never double-fire.
+    const sceneUp = (pointer) => {
+      if (!armed) return;
+      let near = true;
+      try {
+        const b = obj.getBounds();
+        near = pointer.x >= b.x - o.margin && pointer.x <= b.right + o.margin &&
+               pointer.y >= b.y - o.margin && pointer.y <= b.bottom + o.margin;
+      } catch (e) { near = true; }
+      disarm();
+      if (near) o.onFire();
+    };
+    scene.input.on('pointerup', sceneUp);
+    scene.events.once('shutdown', () => scene.input.off('pointerup', sceneUp));
+    scene.events.once('destroy', () => scene.input.off('pointerup', sceneUp));
+
+    // Dragging the finger off only resets the press visual (stays armed).
+    obj.on('pointerout', () => { if (armed) o.onUp(); });
+    return obj;
+  },
+
   // Draw a rounded rectangle into a Graphics object (fill + optional stroke).
   roundRect(g, x, y, w, h, r, fill, alpha = 1, stroke = null, strokeW = 0) {
     if (fill !== null && fill !== undefined) {
@@ -66,7 +115,8 @@ const UI = {
 
     c.setSize(w, h);
     if (!o.disabled) {
-      c.setInteractive(new Phaser.Geom.Rectangle(-w / 2, -h / 2, w, h), Phaser.Geom.Rectangle.Contains);
+      // Generous hit area (a little larger than the visible button) for easy taps.
+      c.setInteractive(new Phaser.Geom.Rectangle(-w / 2 - 6, -h / 2 - 6, w + 12, h + 12), Phaser.Geom.Rectangle.Contains, { useHandCursor: true });
       c.on('pointerover', () => {
         if (!scene.sys.isActive()) return;
         scene.tweens.add({ targets: c, scale: 1.05, duration: 120, ease: 'Back.out' });
@@ -77,15 +127,13 @@ const UI = {
         redraw(0, o.color);
         label.y = 0;
       });
-      c.on('pointerdown', () => {
-        redraw(6, dark);
-        label.y = 3;
-      });
-      c.on('pointerup', () => {
-        redraw(0, o.color);
-        label.y = 0;
-        if (o.sound && AudioManager[o.sound]) AudioManager[o.sound]();
-        o.onClick();
+      this.press(scene, c, {
+        onDown: () => { redraw(6, dark); label.y = 3; },
+        onUp: () => { redraw(0, o.color); label.y = 0; },
+        onFire: () => {
+          if (o.sound && AudioManager[o.sound]) AudioManager[o.sound]();
+          o.onClick();
+        },
       });
     } else {
       c.setAlpha(0.55);
@@ -124,14 +172,109 @@ const UI = {
     c.add(ic);
 
     c.setSize(o.d, o.d);
-    c.setInteractive(new Phaser.Geom.Circle(0, 0, r), Phaser.Geom.Circle.Contains);
+    // Square, generously-sized tap target (touch-friendly). A rectangular hit
+    // area on a container is the most reliable across devices.
+    const hr = r + 10;
+    c.setInteractive(new Phaser.Geom.Rectangle(-hr, -hr, hr * 2, hr * 2), Phaser.Geom.Rectangle.Contains, { useHandCursor: true });
     c.on('pointerover', () => { scene.tweens.add({ targets: c, scale: 1.1, duration: 100 }); AudioManager.hover(); });
     c.on('pointerout', () => { scene.tweens.add({ targets: c, scale: 1, duration: 100 }); redraw(0); ic.y = 0; });
-    c.on('pointerdown', () => { redraw(5); ic.y = 3; });
-    c.on('pointerup', () => { redraw(0); ic.y = 0; AudioManager.click(); o.onClick(); });
+    this.press(scene, c, {
+      onDown: () => { redraw(5); ic.y = 3; },
+      onUp: () => { redraw(0); ic.y = 0; },
+      onFire: () => { AudioManager.click(); o.onClick(); },
+    });
 
     c.setIcon = (t) => ic.setText(t);
     return c;
+  },
+
+  /**
+   * Toggle fullscreen robustly. Prefers Phaser's Scale Manager (which handles
+   * vendor prefixes) and falls back to the native Fullscreen API on the page
+   * element if Phaser reports it unavailable. Must be called from within a
+   * user-gesture handler (it is — from a button's onFire).
+   * Returns the resulting fullscreen state (best effort).
+   */
+  toggleFullscreen(scene) {
+    const scale = scene.scale;
+    try {
+      if (scale.isFullscreen) {
+        scale.stopFullscreen();
+        this._nativeExitFullscreen();
+        return false;
+      }
+      const supported = scene.sys.game.device.fullscreen &&
+        scene.sys.game.device.fullscreen.available;
+      if (supported) {
+        scale.startFullscreen();
+        return true;
+      }
+      // Native fallback (older/iOS Safari etc.)
+      return this._nativeRequestFullscreen();
+    } catch (e) {
+      // Last-ditch native attempt.
+      try { return this._nativeRequestFullscreen(); } catch (e2) { return scale.isFullscreen; }
+    }
+  },
+
+  _nativeRequestFullscreen() {
+    const el = document.documentElement;
+    const req = el.requestFullscreen || el.webkitRequestFullscreen ||
+      el.webkitRequestFullScreen || el.mozRequestFullScreen || el.msRequestFullscreen;
+    if (req) { req.call(el); return true; }
+    return false;
+  },
+
+  _nativeExitFullscreen() {
+    const ex = document.exitFullscreen || document.webkitExitFullscreen ||
+      document.mozCancelFullScreen || document.msExitFullscreen;
+    if (ex && (document.fullscreenElement || document.webkitFullscreenElement)) ex.call(document);
+  },
+
+  isFullscreenNow(scene) {
+    return !!(scene.scale.isFullscreen || document.fullscreenElement || document.webkitFullscreenElement);
+  },
+
+  /**
+   * A ready-made fullscreen icon button whose icon always reflects the real
+   * fullscreen state (it listens to Scale Manager + DOM fullscreen changes).
+   */
+  fullscreenButton(scene, x, y, d = 56) {
+    const icon = () => (this.isFullscreenNow(scene) ? '🗗' : '⛶');
+    const btn = this.iconButton(scene, x, y, {
+      icon: icon(), d, color: COLORS.white,
+      onClick: () => { this.toggleFullscreen(scene); scene.time.delayedCall(60, sync); },
+    });
+    const sync = () => btn.setIcon(icon());
+    scene.scale.on('enterfullscreen', sync);
+    scene.scale.on('leavefullscreen', sync);
+    const domSync = () => sync();
+    document.addEventListener('fullscreenchange', domSync);
+    document.addEventListener('webkitfullscreenchange', domSync);
+    scene.events.once('shutdown', () => {
+      scene.scale.off('enterfullscreen', sync);
+      scene.scale.off('leavefullscreen', sync);
+      document.removeEventListener('fullscreenchange', domSync);
+      document.removeEventListener('webkitfullscreenchange', domSync);
+    });
+    return btn;
+  },
+
+  /**
+   * A ready-made audio on/off icon button. Toggles the mute state, updates its
+   * icon, and (re)starts the background music when un-muting.
+   */
+  audioButton(scene, x, y, d = 56) {
+    const btn = this.iconButton(scene, x, y, {
+      icon: AudioManager.isMuted() ? '🔇' : '🔊', d, color: COLORS.white,
+      onClick: () => {
+        AudioManager.resume();
+        const muted = AudioManager.toggleMute();
+        btn.setIcon(muted ? '🔇' : '🔊');
+        if (!muted) AudioManager.startMusic();
+      },
+    });
+    return btn;
   },
 
   // A soft white content panel with a coloured header bar.
